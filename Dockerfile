@@ -39,6 +39,6 @@ COPY . ./
 RUN ["chmod", "+x", "/usr/src/API/First_Setup.sh"]
 #ENTRYPOINT [ "/usr/src/API/First_Setup.sh" ]
 ENTRYPOINT [ "python","/usr/src/API/First.py" ]
-EXPOSE 5000
+EXPOSE 443
 CMD ["python","/usr/src/API/app.py"]
 
