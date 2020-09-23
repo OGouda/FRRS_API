@@ -2,7 +2,7 @@
 # FROM python:3.7.9-slim-stretch
 FROM omargouda/frrs_base:latest
 WORKDIR usr/src/API
-COPY ./API ./
+COPY ../API ./
 # RUN apt-get -y update
 # RUN apt-get install -y --fix-missing \
 #     build-essential \
