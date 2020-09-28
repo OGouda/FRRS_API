@@ -2,7 +2,7 @@
 # FROM python:3.7.9-slim-stretch
 FROM omargouda/frrs_base:latest
 WORKDIR usr/src/API
-COPY ../API ./
+COPY ./API ./
 # RUN apt-get -y update
 # RUN apt-get install -y --fix-missing \
 #     build-essential \
@@ -36,7 +36,7 @@ COPY ../API ./
 #     pip3 install -r requirements.txt
 # RUN whatever_command_you_run_to_start_your_app
 #
-RUN ["chmod", "+x", "/usr/src/API/First_Setup.sh"]
+#RUN ["chmod", "+x", "/usr/src/API/First_Setup.sh"]
 #ENTRYPOINT [ "/usr/src/API/First_Setup.sh" ]
 ENTRYPOINT [ "python","/usr/src/API/First.py" ]
 EXPOSE 5000
