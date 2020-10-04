@@ -254,6 +254,5 @@ def alignment_dlib(ImgPIL_grayed,  directionRotation = None, angle = 0 , test=Fa
         return crop_img
     
     else:
-        print('satatttttttttttttttt')
         return gray
 
