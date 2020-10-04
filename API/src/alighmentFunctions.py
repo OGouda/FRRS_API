@@ -2,52 +2,108 @@ import dlib
 from PIL import Image, ImageDraw, ImageEnhance
 import numpy as np
 import face_recognition
+import time
 
-def firstMethod(imgPIL):
-    imgArray = np.array(imgPIL)     
-    face_locations = face_recognition.face_locations(imgArray)
-    face_encodings=[]
-    if len(face_locations)>1:
-        big_area = 0
-        for top, right, bottom, left in face_locations:
-            width = right - left
-            height = bottom - top
-            area = width * height
-            if area > big_area:
-                big_area = area
-                big_location = top,right,bottom,left
-        face_locations = [big_location]  
+DETECTOR_MODEL  = dlib.get_frontal_face_detector()
+PREDICTOR_MODEL = dlib.shape_predictor('models/shape_predictor_5_face_landmarks.dat') 
 
-        face_encodings = face_recognition.face_encodings(imgArray, face_locations) 
-        IDX_format = 1
 
-    if len(face_locations):
-        face_encodings = face_recognition.face_encodings(imgArray, face_locations) 
-        return 1, face_encodings
+def imageRotation(imgPIL):
+    ImgPIL_grayed = imgPIL.convert("L")
+    gray=np.array(ImgPIL_grayed)
 
-#This method will apply:: Alignment  + cropping
-def secondMethod(imgPIL):    
-    rotated_img =alignment_dlib(imgPIL)                         #output is numpy
-    stacked_img = np.stack((rotated_img,)*3, axis=-1)
-    face_encodings = face_recognition.face_encodings(stacked_img) 
+    #check if detector can detect faces
+    rects = DETECTOR_MODEL(gray, 0)
 
-    IDX_format = 2
-    if len(face_encodings):
-        #db_ourImages.append(IDX_format, face_encodings)
-        return 2, face_encodings
+    
+    if len(rects) > 0:
+        #if any face is detected.. then move forward for further analysis
+        return(ImgPIL_grayed)
+
+    else: 
+        # no faces dected. Try rotation. 
+
+        ANGLE_ROTATION = 90
+        ImgPIL_grayed_90 = ImgPIL_grayed.rotate(ANGLE_ROTATION)
+        faces_if_rotated_90 = DETECTOR_MODEL(np.array(ImgPIL_grayed_90), 0)
+
+        if len(faces_if_rotated_90) : 
+            #return the rotated image for further analysis
+            return ImgPIL_grayed_90
+
+        else:
+
+            ANGLE_ROTATION = 270
+            ImgPIL_grayed_270 = ImgPIL_grayed.rotate(ANGLE_ROTATION)
+            faces_if_rotated_270 = DETECTOR_MODEL(np.array(ImgPIL_grayed_270), 0)
+
+            if len(faces_if_rotated_270):
+                return faces_if_rotated_270
+
+            else:
+                print('NO FACSE AT ALLL')
+                #by Reaching here, no faces were detected by any of the rotation methods, then reject the image. 
+                return None
+
+            
+def handleImage_method_1_and_2(imgPIL, MethodChoice):
+
+    timeStart = time.time()  
+    imgPIL_grayed = imageRotation(imgPIL)
+    if imgPIL_grayed is not None: 
+
+        if  MethodChoice == "METHOD_1":
+            imgArray = np.array(imgPIL_grayed)  
+            imgArray = np.stack((imgArray,)*3, axis=-1)   
+            face_locations = face_recognition.face_locations(imgArray)
+            face_encodings=[]
+            if len(face_locations)>1:
+                big_area = 0
+                for top, right, bottom, left in face_locations:
+                    width = right - left
+                    height = bottom - top
+                    area = width * height
+                    if area > big_area:
+                        big_area = area
+                        big_location = top,right,bottom,left
+                face_locations = [big_location]  
+
+            if len(face_locations):
+                face_encodings = face_recognition.face_encodings(imgArray, face_locations) 
+                print(MethodChoice,"]]]]]]]]]]] time : ",  time.time() - timeStart)
+                return 1, face_encodings
+
+
+        elif MethodChoice == "METHOD_2": 
+            #This method will apply:: Alignment  + cropping  
+            rotated_img =alignment_dlib(imgPIL_grayed)                        
+            stacked_img = np.stack((rotated_img,)*3, axis=-1)
+            face_encodings = face_recognition.face_encodings(stacked_img) 
+
+            IDX_format = 2
+            if len(face_encodings):
+                #db_ourImages.append(IDX_format, face_encodings)
+                print(MethodChoice,"]]]]]]]]]]] time : ",  time.time() - timeStart)
+                return 2, face_encodings
+
+
 
 #This method will apply:: Brightness  +  Alignment + cropping 
-def thirdMethod(imgPIL):
+def handleImage_method_3_only(imgPIL):
+    timeStart = time.time()
     enhancer = ImageEnhance.Brightness(imgPIL)  # Image brightness enhancer
     factor = 1.5                                # Brightens the image by this factor
     im_output = enhancer.enhance(factor)
-    rotated_img =alignment_dlib(im_output)      # Align the image
-    stacked_img = np.stack((rotated_img,)*3, axis=-1)
-    face_encodings = face_recognition.face_encodings(stacked_img)  
-    IDX_format = 3
-    if len(face_encodings):              
-        #db_ourImages.append(IDX_format, face_encoding)
-        return 3, face_encodings
+    imgPIL_grayed = imageRotation(imgPIL)
+    if imgPIL_grayed is not None: 
+        rotated_img =alignment_dlib(imgPIL_grayed)   
+        stacked_img = np.stack((rotated_img,)*3, axis=-1)
+        face_encodings = face_recognition.face_encodings(stacked_img)  
+        IDX_format = 3
+        if len(face_encodings): 
+            print(3,"]]]]]]]]]]] time : ",  time.time() - timeStart)             
+            return 3, face_encodings
+            
 
 
 def distance(a, b):
@@ -98,15 +154,16 @@ def get_eyes_nose(eyes, nose):
 
 
 
-def alignment_dlib(imgPIL, test=False):
-    RotationThreshold = 10
-    detector  = dlib.get_frontal_face_detector()
-    predictor = dlib.shape_predictor('models/shape_predictor_5_face_landmarks.dat') 
-    
-    ImgPIL_grayed = imgPIL.convert("L")
-    gray=np.array(ImgPIL_grayed)
 
-    rects = detector(gray, 0)
+
+
+def alignment_dlib(ImgPIL_grayed,  directionRotation = None, angle = 0 , test=False):
+    RotationThreshold = 10
+    
+    gray=np.array(ImgPIL_grayed)
+    rects = DETECTOR_MODEL(gray, 0) 
+
+
     if len(rects) < 1:
         if test:print('No faces! hand it to face_rec.')
         return gray
@@ -131,8 +188,8 @@ def alignment_dlib(imgPIL, test=False):
         w = big_rect.right()
         h = big_rect.bottom()
         
-        #Start preparing the rotation
-        shape = predictor(gray, big_rect)
+        #Start preparing the rotationo
+        shape = PREDICTOR_MODEL(gray, big_rect)
         shape = shape_to_normal(shape)
         nose, left_eye, right_eye = get_eyes_nose_dlib(shape)
         center_of_forehead = ((left_eye[0] + right_eye[0]) // 2, (left_eye[1] + right_eye[1]) // 2)
@@ -155,14 +212,13 @@ def alignment_dlib(imgPIL, test=False):
             if abs(angle) > RotationThreshold: #dont allow less than 10degree
                 ImgPIL_grayed = ImgPIL_grayed.rotate(angle)   
 
-                if test:
-                    ImgPIL_grayed.save("drawingxx.jpg")
+                if test: ImgPIL_grayed.save("drawingxx.jpg")
 
                 gray=np.array(ImgPIL_grayed) 
-                
+   
     if test:print('Code to crop', gray.shape)
 
-    rects = detector(gray, 0)
+    rects = DETECTOR_MODEL(gray, 0)
     if test:print('To crop. Number of rects:', len(rects))
     if len(rects) > 0:
         big_area = 0         
@@ -198,6 +254,6 @@ def alignment_dlib(imgPIL, test=False):
         return crop_img
     
     else:
-        print('No faces! hand it to face_rec.')
+        print('satatttttttttttttttt')
         return gray
 
