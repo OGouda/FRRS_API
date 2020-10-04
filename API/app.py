@@ -2,6 +2,8 @@ import os
 import time
 import face_recognition
 from io import BytesIO
+from binascii import hexlify
+
 import base64
 from PIL import Image
 import numpy as np
@@ -9,6 +11,10 @@ import numpy as np
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql import text
+from sqlalchemy.schema import CreateTable
+from sqlalchemy import Column, MetaData, Table
+from sqlalchemy.ext.declarative import declarative_base
+
 
 from flask_restful import Resource, Api,reqparse
 from multiprocessing import Pool
@@ -23,11 +29,13 @@ parser = reqparse.RequestParser()
 from models import *
 from src import  alighmentFunctions
 
+PRIVATE_KEY = '123'
 
 
 # Global Variables 
 MaxImageSize = 500       # Max image size allowed to be processed, if image exceeds this size, it will be resized. 
-Threshold_FaceRec = 0.47 # threshold used to accept that two faces are for the same person
+Threshold_FaceRec = 0.47 # Threshold used to accept that two faces are for the same person
+STANDARD_API_LENGTH = 16 # Maximum length of the API keys
 
 # Default replies
 
@@ -38,6 +46,7 @@ NO_TABLES_FOUND_FOR_API ='NO_TABLES_FOUND_FOR_API'
 ERROR_WHILE_PROCESSING_IMAGE_FILE ='ERROR_WHILE_PROCESSING_IMAGE_FILE'
 MATCH_FOUND = 'MATCH_FOUND'
 MATCH_NOT_FOUND = 'MATCH_NOT_FOUND'
+
 
 
 class registration(Resource):
@@ -133,11 +142,12 @@ class registration(Resource):
                 return {'message': ERROR_WHILE_PROCESSING_IMAGE_FILE, 'error_message':str(e)}, 400
 
         # if image was read successfully, start processing the image and extract faces.      
+
         pool = Pool(processes=3)
         resutls =[]
-        resutls.append(pool.apply_async(alighmentFunctions.firstMethod ,[Img_PILversion]))
-        resutls.append(pool.apply_async(alighmentFunctions.secondMethod,[Img_PILversion]))
-        resutls.append(pool.apply_async(alighmentFunctions.thirdMethod ,[Img_PILversion]))
+        resutls.append(pool.apply_async(alighmentFunctions.handleImage_method_1_and_2,[Img_PILversion, "METHOD_1"]))        
+        resutls.append(pool.apply_async(alighmentFunctions.handleImage_method_1_and_2,[Img_PILversion, "METHOD_2"]))
+        resutls.append(pool.apply_async(alighmentFunctions.handleImage_method_3_only,[Img_PILversion]))
         pool.close()
         pool.join()
 
@@ -338,8 +348,10 @@ class signIn(Resource):
         # if image was read successfully, start processing the image and extract faces.      
         pool = Pool(processes=2)
         resutls =[]
-        resutls.append(pool.apply_async(alighmentFunctions.firstMethod ,[Img_PILversion]))
-        resutls.append(pool.apply_async(alighmentFunctions.secondMethod,[Img_PILversion]))
+        resutls.append(pool.apply_async(alighmentFunctions.handleImage_method_1_and_2,[Img_PILversion, "METHOD_1"]))        
+        resutls.append(pool.apply_async(alighmentFunctions.handleImage_method_1_and_2,[Img_PILversion, "METHOD_2"]))
+        #resutls.append(pool.apply_async(alighmentFunctions.handleImage_method_3_only,[Img_PILversion]))
+
         pool.close()
         pool.join()
 
@@ -393,7 +405,7 @@ class signIn(Resource):
 
                             encoding_fromDatabase = np.asarray(low_enc + high_enc)
 
-                            print("functionNumber is [{}]  name found is [{}]".format(functionNumber, person_name))
+                           
                             List_of_obtained_names.append(person_name)
 
                             face_distances= np.linalg.norm( encoding_fromDatabase - np.array(face_encoding) ) 
@@ -402,7 +414,8 @@ class signIn(Resource):
                                 'person_name':person_name,
                                 'email':email, 
                                 'face_distances':face_distances})
-                            print("face_distances: ", face_distances) 
+                            
+                            print("functionNumber is [{}]  name found is [{}] with distance [{}]".format(functionNumber, person_name, face_distances))
 
 
             # Create a pool to find the repeated result
@@ -437,9 +450,105 @@ class signIn(Resource):
                 }, 200
 
 
+
+class NewEvent(Resource):
+# Class to handle NewEvent operations. 
+
+    def __init__(self):
+
+        self.reqparse = reqparse.RequestParser()
+        # no help parameter is provided into this add_argument function to not reveal the parameters of this function
+        self.reqparse.add_argument('key', type = str, required = True,  help = 'No key provided') 
+        self.reqparse.add_argument('event_table_name', type = str, required = True,  help = 'No event_table_name provided') 
+        super(NewEvent, self).__init__()
+
+    def post(self):
+
+        # Prepare the parser to read it.
+        args = self.reqparse.parse_args()
+
+        private_key= args['key']
+
+        if (private_key == PRIVATE_KEY):
+            key_generated = hexlify(os.urandom(STANDARD_API_LENGTH)).decode()
+            
+
+            event_table_name= args['event_table_name']
+
+            if(event_table_name in db.metadata.tables): #If table name exists already
+
+                new_row = Events(key=key_generated, event_table_name=event_table_name)
+
+                db.session.add(new_row) 
+                db.session.commit()
+                
+
+                print(f"The key [{key_generated}] has been generated correctly and table [{event_table_name}] were assgined to it")  
+        
+                Message = f'The key [{key_generated}] has been generated correctly and table [{event_table_name}] were assgined to it'
+                Code    = 200   
+
+            else:
+         
+                Message = f'Table name chosen [{event_table_name}] is not within the reserved list'
+                Code    = 200                  
+
+        else:
+            Message = f'Key Error!'
+            Code    = 400
+
+        return {
+            'message': Message,
+        }, Code        
+
+
+
+class EventName(Resource):
+# Class to handle EventName operations. 
+
+    def __init__(self):
+
+        self.reqparse = reqparse.RequestParser()
+        # no help parameter is provided into this add_argument function to not reveal the parameters of this function
+        self.reqparse.add_argument('key', type = str, required = True,  help = 'No key provided') 
+        self.reqparse.add_argument('api'   , type = str, required = True, help = 'No API provided')
+        super(EventName, self).__init__()
+
+    def post(self):
+
+        # Prepare the parser to read it.
+        args = self.reqparse.parse_args()
+
+        private_key= args['key']
+
+
+        if (private_key == PRIVATE_KEY):
+            api_key= args['api']
+
+            query = Events.query.with_entities(Events.event_table_name).filter_by(key =api_key).first()
+            if  query is not None:
+                table_name = query[0]
+                Message = f'Table [{table_name}] is assigned for the requested key'
+                Code    = 200
+
+            else:
+                Message = f'No table found for this API key'
+                Code    = 400
+
+        else:
+                Message = f'Key Error!'
+                Code    = 400
+
+        return {
+            'message': Message,
+        }, Code        
+
+  
+
 api.add_resource(registration, '/registration')
 api.add_resource(signIn , '/signIn')
-
+api.add_resource(NewEvent, '/new-event')
+api.add_resource(EventName, '/event-name')
 
 if __name__ == '__main__':
-    app.run(host= '0.0.0.0', port=5000, debug=True)
+    app.run()
